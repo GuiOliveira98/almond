@@ -41,19 +41,6 @@ function parseEnvVariables(): Result<EnvVariables, ParseEnvVariablesError> {
   return Ok({ owner, repository, token });
 }
 
-app.get("/test-env-variables", (_req: Request, res: Response) => {
-  const envVariables = parseEnvVariables();
-
-  if (envVariables.result === "ok") {
-    res.json({
-      ...envVariables.value,
-      token: "*".repeat(envVariables.value.token.length),
-    });
-  } else {
-    res.json(envVariables.error);
-  }
-});
-
 app.listen(app.get("port"), () => {
   console.log(`Server on http://localhost:${app.get("port")}/`);
 });
