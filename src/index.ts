@@ -1,4 +1,5 @@
 import express, { Application, Request, Response } from "express";
+import axios from "axios";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -24,15 +25,15 @@ type ParseEnvVariablesError =
   | "NO_REPOSITORY_FOUND"
   | "NO_TOKEN_FOUND";
 
-function parseEnvVariables(): Result<EnvVariables, ParseEnvVariablesError> {
+const isValidString = (value: unknown) =>
+  typeof value === "string" && value.length > 0;
+
+function getEnvVariables(): Result<EnvVariables, ParseEnvVariablesError> {
   const {
     GITHUB_OWNER: owner,
     GITHUB_REPOSITORY: repository,
     GITHUB_PERSONAL_ACCESS_TOKEN: token,
   } = process.env;
-
-  const isValidString = (value: unknown) =>
-    typeof value === "string" && value.length > 0;
 
   if (!isValidString(owner)) return Err("NO_OWNER_FOUND");
   if (!isValidString(repository)) return Err("NO_REPOSITORY_FOUND");
@@ -40,6 +41,64 @@ function parseEnvVariables(): Result<EnvVariables, ParseEnvVariablesError> {
 
   return Ok({ owner, repository, token });
 }
+
+app.get(
+  "/update/win32/:version/RELEASES",
+  async (req: Request, res: Response) => {
+    const envVariables = getEnvVariables();
+
+    if (envVariables.result === "error") {
+      res
+        .status(500)
+        .end(`FAILED_TO_GET_ENV_VARIABLES - ERROR: ${envVariables.error}`);
+      return;
+    }
+
+    const { owner, repository, token } = envVariables.value;
+
+    const { version } = req.params;
+
+    if (!isValidString(version)) {
+      res.status(400).end("NO_VERSION_PARAM_SUPPLIED");
+      return;
+    }
+
+    // TODO: Get correct asset id
+    const url = `https://api.github.com/repos/${owner}/${repository}/releases/assets/52401542`;
+
+    const headers = {
+      Accept: "application/octet-stream",
+      Authorization: `token ${token}`,
+    };
+
+    // TODO: cache response
+    const response = await axios.get(url, { headers });
+
+    if (response.status !== 200) {
+      res
+        .status(500)
+        .end(
+          `GET_RELEASES_FILE_FAILED - INVALID_STATUS - STATUS: ${response.status} URL: ${url}`
+        );
+      return;
+    }
+
+    const content = response.data;
+
+    if (!isValidString(content)) {
+      res
+        .status(500)
+        .end(
+          `GET_RELEASES_FILE_FAILED - INVALID_CONTENT - CONTENT: ${content} URL: ${url}`
+        );
+      return;
+    }
+
+    res.status(200);
+    res.setHeader("content-type", "application/octet-stream");
+    res.end(content);
+  }
+);
 
 app.listen(app.get("port"), () => {
   console.log(`Server on http://localhost:${app.get("port")}/`);
