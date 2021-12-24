@@ -57,8 +57,7 @@ app.get(
     const { version } = req.params;
 
     if (!isValidString(version)) {
-      res.status(400).end("NO_VERSION_PARAM_SUPPLIED");
-      return;
+      return res.status(400).end("NO_VERSION_PARAM_SUPPLIED");
     }
 
     // TODO: Get correct asset id
@@ -73,23 +72,21 @@ app.get(
     const response = await axios.get(url, { headers });
 
     if (response.status !== 200) {
-      res
+      return res
         .status(500)
         .end(
           `GET_RELEASES_FILE_FAILED - INVALID_STATUS - STATUS: ${response.status} URL: ${url}`
         );
-      return;
     }
 
     const content = response.data;
 
     if (!isValidString(content)) {
-      res
+      return res
         .status(500)
         .end(
           `GET_RELEASES_FILE_FAILED - INVALID_CONTENT - CONTENT: ${content} URL: ${url}`
         );
-      return;
     }
 
     res.status(200);
