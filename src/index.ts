@@ -28,6 +28,15 @@ type ParseEnvVariablesError =
 const isValidString = (value: unknown) =>
   typeof value === "string" && value.length > 0;
 
+const envVariables = getEnvVariables();
+
+if (envVariables.result === "error") {
+  console.error(`FAILED_TO_GET_ENV_VARIABLES - ERROR: ${envVariables.error}`);
+  process.exit();
+}
+
+const { owner, repository, token } = envVariables.value;
+
 function getEnvVariables(): Result<EnvVariables, ParseEnvVariablesError> {
   const {
     GITHUB_OWNER: owner,
@@ -45,17 +54,6 @@ function getEnvVariables(): Result<EnvVariables, ParseEnvVariablesError> {
 app.get(
   "/update/win32/:version/RELEASES",
   async (req: Request, res: Response) => {
-    const envVariables = getEnvVariables();
-
-    if (envVariables.result === "error") {
-      res
-        .status(500)
-        .end(`FAILED_TO_GET_ENV_VARIABLES - ERROR: ${envVariables.error}`);
-      return;
-    }
-
-    const { owner, repository, token } = envVariables.value;
-
     const { version } = req.params;
 
     if (!isValidString(version)) {
@@ -97,6 +95,58 @@ app.get(
     res.status(200);
     res.setHeader("content-type", "application/octet-stream");
     res.end(content);
+  }
+);
+
+app.get(
+  "/update/:platform/:version/:file",
+  async (req: Request, res: Response) => {
+    const { platform, version, file } = req.params;
+
+    if (!isValidString(version))
+      return res.status(400).end("NO_VERSION_PARAM_SUPPLIED");
+
+    if (!isValidString(platform))
+      return res.status(400).end("NO_PLATFORM_PARAM_SUPPLIED");
+
+    if (!isValidString(file))
+      return res.status(400).end("NO_FILE_PARAM_SUPPLIED");
+
+    if (platform !== "win32")
+      return res.status(500).end("ONLY_PLATFORM_WIN32_CURRENTLY_SUPPORTED");
+
+    // TODO: Get correct asset id
+    const assetId = 52401543;
+    const url = `https://${token}@api.github.com/repos/${owner}/${repository}/releases/assets/${assetId}`;
+
+    // this header is used to notify the github api that we want to download the release as a file
+    const AcceptHeader = { Accept: "application/octet-stream" };
+
+    // TODO: Cache value
+    const response = await axios.get(url, {
+      headers: { ...AcceptHeader },
+      responseType: "stream",
+    });
+
+    if (response.status !== 200) {
+      return res
+        .status(500)
+        .end(
+          `GET_RELEASE_FAILED - INVALID_RESPONSE_STATUS - RESPONSE_STATUS: ${response.status}`
+        );
+    }
+
+    const { responseUrl } = response.data;
+
+    if (!isValidString(responseUrl)) {
+      return res
+        .status(500)
+        .end(
+          `GET_RELEASE_FAILED - INVALID_RESPONSE_URL - RESPONSE_URL: ${responseUrl}`
+        );
+    }
+
+    res.redirect(response.data.responseUrl);
   }
 );
 
