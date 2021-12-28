@@ -25,7 +25,7 @@ type ParseEnvVariablesError =
   | "NO_REPOSITORY_FOUND"
   | "NO_TOKEN_FOUND";
 
-const isValidString = (value: unknown) =>
+const isValidString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 
 const envVariables = getEnvVariables();
@@ -51,6 +51,12 @@ function getEnvVariables(): Result<EnvVariables, ParseEnvVariablesError> {
   return Ok({ owner, repository, token });
 }
 
+const authAxios = axios.create({
+  headers: {
+    Authorization: `token ${token}`,
+  },
+});
+
 app.get(
   "/update/win32/:version/RELEASES",
   async (req: Request, res: Response) => {
@@ -60,16 +66,96 @@ app.get(
       return res.status(400).end("NO_VERSION_PARAM_SUPPLIED");
     }
 
-    // TODO: Get correct asset id
-    const url = `https://api.github.com/repos/${owner}/${repository}/releases/assets/52401542`;
+    const getLatestReleaseFileUrl = await authAxios
+      .get<unknown>(
+        `https://api.github.com/repos/${owner}/${repository}/releases/latest`
+      )
+      .then((response): Result<{ url: string }, string> => {
+        if (response.status !== 200) {
+          return Err(`INVALID_RESPONSE_STATUS - STATUS: ${response.status}`);
+        }
 
-    const headers = {
-      Accept: "application/octet-stream",
-      Authorization: `token ${token}`,
-    };
+        const getProperty = <T extends object>(
+          object: T,
+          field: string
+        ): unknown | undefined => {
+          // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Property_Accessors
+          // This works, but TypeScript doesnt allow accessing a object with a string.
+          // @ts-ignore
+          return object[field];
+        };
+
+        const isArray = (value: unknown): value is unknown[] =>
+          Array.isArray(value);
+
+        if (typeof response.data !== "object" || response.data === null) {
+          return Err(
+            `INVALID_RESPONSE_DATA - RESPONSE_IS_NOT_AN_OBJECT - DATA: ${JSON.stringify(
+              response.data
+            )}`
+          );
+        }
+
+        const assets = getProperty(response.data, "assets");
+
+        if (typeof assets !== "object" || assets === null) {
+          return Err(
+            `INVALID_RESPONSE_DATA - NO_ASSETS_FOUND - DATA: ${JSON.stringify(
+              response.data
+            )}`
+          );
+        }
+
+        if (!isArray(assets)) {
+          return Err(
+            `INVALID_RESPONSE_DATA - INVALID_ASSETS_LIST - DATA: ${JSON.stringify(
+              assets
+            )}`
+          );
+        }
+
+        type Asset = { name: string; url: string };
+
+        const releasesFile = assets
+          .map((asset) => {
+            if (typeof asset !== "object" || asset === null) {
+              return null;
+            }
+
+            const name = getProperty(asset, "name");
+            if (typeof name !== "string") return null;
+
+            const url = getProperty(asset, "url");
+            if (typeof url !== "string") return null;
+
+            return { name, url };
+          })
+          .filter((asset): asset is Asset => asset !== null)
+          .find((asset) => asset.name === "RELEASES");
+
+        if (releasesFile === undefined) {
+          return Err(
+            `INVALID_RESPONSE_DATA - NO_RELEASES_FILE_FOUND - DATA: ${JSON.stringify(
+              assets
+            )}`
+          );
+        }
+
+        return Ok({ url: releasesFile.url });
+      });
+
+    if (getLatestReleaseFileUrl.result === "error") {
+      return res.status(500).end(getLatestReleaseFileUrl.error);
+    }
+
+    const url = getLatestReleaseFileUrl.value.url;
 
     // TODO: cache response
-    const response = await axios.get(url, { headers });
+    const response = await authAxios.get(url, {
+      headers: {
+        Accept: "application/octet-stream",
+      },
+    });
 
     if (response.status !== 200) {
       return res
