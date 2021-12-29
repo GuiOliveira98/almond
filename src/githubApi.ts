@@ -3,10 +3,6 @@ import { Result, Err, Ok } from "./result";
 import { getProperty, isArray, isStringValid } from "./utils";
 
 export class GithubAPI {
-  private owner: string;
-  private repository: string;
-  private authAxios: AxiosInstance;
-
   latestRelease: GetLatestRelease;
 
   constructor(envVariables: {
@@ -16,28 +12,24 @@ export class GithubAPI {
   }) {
     const { owner, repository, token } = envVariables;
 
-    this.owner = owner;
-    this.repository = repository;
-
-    this.authAxios = axios.create({
+    const authAxios = axios.create({
       headers: {
         Authorization: `token ${token}`,
       },
     });
 
-    this.update();
+    const updateReleases = () =>
+      this.updateReleases(authAxios, owner, repository);
+
+    updateReleases();
 
     const _15minutes = 15 * 60 * 1_000;
-    setInterval(this.update, _15minutes);
+    setInterval(updateReleases, _15minutes);
   }
 
-  update = async function () {
-    this.latestRelease = getLatestRelease(
-      this.authAxios,
-      this.owner,
-      this.repository
-    );
-  };
+  updateReleases(authAxios: AxiosInstance, owner: string, repository: string) {
+    this.latestRelease = getLatestRelease(authAxios, owner, repository);
+  }
 }
 
 type Asset = { name: string; url: string };
