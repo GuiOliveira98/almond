@@ -39,3 +39,32 @@ export const getProperty = <T extends object>(
   // @ts-ignore
   return object[field];
 };
+
+export interface Version {
+  major: number;
+  minor: number;
+  fix: number;
+}
+
+export function parseVersion(
+  value: string
+): Result<Version, "NOT_ON_SEMVER_FORMAT"> {
+  const versionRegex = /v?(?<major>\d+).(?<minor>\d+).(?<fix>\d+)/;
+  const match = value.match(versionRegex);
+
+  if (match === null || match.groups === undefined) {
+    return Err("NOT_ON_SEMVER_FORMAT" as const);
+  }
+
+  const { major, minor, fix } = match.groups;
+
+  return Ok({ major: Number(major), minor: Number(minor), fix: Number(fix) });
+}
+
+export function isSameVersion(versionA: Version, versionB: Version) {
+  return (
+    versionA.major === versionB.major &&
+    versionA.minor === versionB.minor &&
+    versionA.fix === versionB.fix
+  );
+}

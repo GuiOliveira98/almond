@@ -1,6 +1,12 @@
 import axios, { AxiosInstance } from "axios";
 import { Result, Err, Ok } from "./result";
-import { getProperty, isArray, isStringValid } from "./utils";
+import {
+  getProperty,
+  isArray,
+  isStringValid,
+  parseVersion,
+  Version,
+} from "./utils";
 
 export class GithubAPI {
   latestRelease: GetLatestReleasePromise;
@@ -38,9 +44,9 @@ type Asset = {
   getDownloadUrl: () => GetDownloadUrlPromise;
 };
 
-type Release = { relasesFile: string; assets: Asset[] };
+type Release = { version: Version; relasesFile: string; assets: Asset[] };
 
-type Error = GithubApiError | MissingReleasesFileError;
+type Error = GithubApiError | MissingReleasesFileError | InvalidTagNameError;
 
 type GithubApiError = {
   type: "GITHUB_API_ERROR";
@@ -53,6 +59,9 @@ type GithubApiErrorTags =
   | "GET_RELEASES_FILE_FAILED";
 
 type MissingReleasesFileError = { type: "MISSING_RELEASES_FILE" };
+type InvalidTagNameError = {
+  type: "TAG_NAME_DOESNT_FOLLOW_SEMVER_FORMAT";
+};
 
 export type GetLatestReleasePromise = Promise<Result<Release, Error>>;
 
@@ -74,6 +83,17 @@ export async function getLatestRelease(
 
   if (typeof response.data !== "object" || response.data === null) {
     return githubErr("INVALID_RESPONSE_DATA", "RESPONSE_IS_NOT_AN_OBJECT");
+  }
+
+  const tagName = getProperty(response.data, "tag_name");
+
+  if (!isStringValid(tagName))
+    return githubErr("INVALID_RESPONSE_DATA", "MISSING_TAG_NAME");
+
+  const parsedVersionResult = parseVersion(tagName);
+
+  if (parsedVersionResult.result === "error") {
+    return Err<Error>({ type: "TAG_NAME_DOESNT_FOLLOW_SEMVER_FORMAT" });
   }
 
   const assets = getProperty(response.data, "assets");
@@ -139,7 +159,11 @@ export async function getLatestRelease(
     );
   }
 
-  return Ok({ relasesFile: releasesFileContent, assets: normalizedAssets });
+  return Ok({
+    relasesFile: releasesFileContent,
+    assets: normalizedAssets,
+    version: parsedVersionResult.value,
+  });
 }
 
 type GetDownloadUrlPromise = Promise<

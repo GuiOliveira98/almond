@@ -20,6 +20,12 @@ export async function getDownloadFileRoute(
       return res.status(400).end("Latest release has no RELEASES file.");
     }
 
+    if (error.type === "TAG_NAME_DOESNT_FOLLOW_SEMVER_FORMAT") {
+      return res
+        .status(400)
+        .end("Release tag doesnt follow the Semantic Versioning format.");
+    }
+
     // never
     return;
   }

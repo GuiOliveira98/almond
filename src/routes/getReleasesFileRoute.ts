@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { GithubAPI } from "../githubApi";
-import { isStringValid } from "../utils";
+import { isSameVersion, isStringValid, parseVersion } from "../utils";
 
 export async function getReleasesFileRoute(
   req: Request,
@@ -10,7 +10,15 @@ export async function getReleasesFileRoute(
   const { version } = req.params;
 
   if (!isStringValid(version)) {
-    return res.status(400).end("NO_VERSION_PARAM_SUPPLIED");
+    return res.status(400).end("Version param was not supplied.");
+  }
+
+  const parsedVersion = parseVersion(version);
+
+  if (parsedVersion.result === "error") {
+    return res
+      .status(400)
+      .end("Version param doesnt follow the Semantic Versioning format.");
   }
 
   const latestReleaseResult = await githubApi.latestRelease;
@@ -26,13 +34,24 @@ export async function getReleasesFileRoute(
       return res.status(400).end("Latest release has no RELEASES file.");
     }
 
+    if (error.type === "TAG_NAME_DOESNT_FOLLOW_SEMVER_FORMAT") {
+      return res
+        .status(400)
+        .end("Release tag doesnt follow the Semantic Versioning format.");
+    }
+
     // never
     return;
+  }
+
+  const latestRelease = latestReleaseResult.value;
+  if (isSameVersion(latestRelease.version, parsedVersion.value)) {
+    return res.status(204).end();
   }
 
   res.status(200);
   res.setHeader("content-type", "application/octet-stream");
 
-  const releasesFile = latestReleaseResult.value.relasesFile;
+  const releasesFile = latestRelease.relasesFile;
   res.end(releasesFile);
 }
