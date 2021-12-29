@@ -4,8 +4,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { getEnvVariables } from "./utils";
-import { getDownloadFile } from "./routes/getDownloadFile";
-import { getReleasesFile } from "./routes/getReleasesFile";
+import { getDownloadFileRoute } from "./routes/getDownloadFileRoute";
+import { getReleasesFileRoute } from "./routes/getReleasesFileRoute";
 import { GithubAPI } from "./githubApi";
 
 async function startServer() {
@@ -18,18 +18,16 @@ async function startServer() {
     process.exit();
   }
 
-  const { owner, repository, token } = envVariables.value;
-
   const githubApi = new GithubAPI(envVariables.value);
 
   app.set("port", process.env.PORT || 3000);
 
   app.get("/update/win32/:version/RELEASES", (request, response) =>
-    getReleasesFile(request, response, githubApi)
+    getReleasesFileRoute(request, response, githubApi)
   );
 
   app.get("/update/:platform/:version/:file", (request, response) =>
-    getDownloadFile(request, response, token, owner, repository)
+    getDownloadFileRoute(request, response, githubApi)
   );
 
   app.listen(app.get("port"), () => {

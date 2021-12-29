@@ -3,7 +3,7 @@ import { Result, Err, Ok } from "./result";
 import { getProperty, isArray, isStringValid } from "./utils";
 
 export class GithubAPI {
-  latestRelease: GetLatestRelease;
+  latestRelease: GetLatestReleasePromise;
 
   constructor(envVariables: {
     owner: string;
@@ -32,7 +32,11 @@ export class GithubAPI {
   }
 }
 
-type Asset = { name: string; url: string };
+type Asset = {
+  name: string;
+  url: string;
+  getDownloadUrl: () => GetDownloadUrlPromise;
+};
 
 type Release = { relasesFile: string; assets: Asset[] };
 
@@ -50,13 +54,13 @@ type GithubApiErrorTags =
 
 type MissingReleasesFileError = { type: "MISSING_RELEASES_FILE" };
 
-export type GetLatestRelease = Promise<Result<Release, Error>>;
+export type GetLatestReleasePromise = Promise<Result<Release, Error>>;
 
 export async function getLatestRelease(
   authAxios: AxiosInstance,
   owner: string,
   repository: string
-): GetLatestRelease {
+): GetLatestReleasePromise {
   const response = await authAxios.get<unknown>(
     `https://api.github.com/repos/${owner}/${repository}/releases/latest`
   );
@@ -97,7 +101,11 @@ export async function getLatestRelease(
       const url = getProperty(asset, "url");
       if (typeof url !== "string") return null;
 
-      return { name, url };
+      return {
+        name,
+        url,
+        getDownloadUrl: () => getDownloadUrl(authAxios, url),
+      };
     })
     .filter((asset): asset is Asset => asset !== null);
 
@@ -132,4 +140,48 @@ export async function getLatestRelease(
   }
 
   return Ok({ relasesFile: releasesFileContent, assets: normalizedAssets });
+}
+
+type GetDownloadUrlPromise = Promise<
+  Result<{ responseUrl: string }, GithubApiErrorForGetDownloadUrl>
+>;
+
+type GithubApiErrorForGetDownloadUrl = {
+  type: "GITHUB_API_ERROR";
+  tag: "GET_ASSET_FAILED";
+  message: string;
+};
+
+async function getDownloadUrl(
+  authAxios: AxiosInstance,
+  url: string
+): GetDownloadUrlPromise {
+  // this header is used to notify the github api that we want to download the release as a file
+  const AcceptHeader = { Accept: "application/octet-stream" };
+
+  const response = await authAxios.get(url, {
+    headers: AcceptHeader,
+    responseType: "stream",
+  });
+
+  const githubErr = (message: string) =>
+    Err<GithubApiErrorForGetDownloadUrl>({
+      type: "GITHUB_API_ERROR",
+      tag: "GET_ASSET_FAILED",
+      message,
+    });
+
+  if (response.status !== 200) {
+    return githubErr(
+      `INVALID_RESPONSE_STATUS - RESPONSE_STATUS: ${response.status}`
+    );
+  }
+
+  const { responseUrl } = response.data;
+
+  if (!isStringValid(responseUrl)) {
+    return githubErr("INVALID_RESPONSE_URL");
+  }
+
+  return Ok({ responseUrl });
 }

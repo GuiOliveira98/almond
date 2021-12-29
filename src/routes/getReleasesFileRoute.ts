@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { GithubAPI } from "../githubApi";
 import { isStringValid } from "../utils";
 
-export async function getReleasesFile(
+export async function getReleasesFileRoute(
   req: Request,
   res: Response,
   githubApi: GithubAPI
