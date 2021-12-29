@@ -26,3 +26,16 @@ export function getEnvVariables(): Result<
 
   return Ok({ owner, repository, token });
 }
+
+export const isArray = (value: unknown): value is unknown[] =>
+  Array.isArray(value);
+
+export const getProperty = <T extends object>(
+  object: T,
+  field: string
+): unknown | undefined => {
+  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Property_Accessors
+  // This works, but TypeScript doesnt allow accessing a object with a string.
+  // @ts-ignore
+  return object[field];
+};

@@ -1,0 +1,143 @@
+import axios, { AxiosInstance } from "axios";
+import { Result, Err, Ok } from "./result";
+import { getProperty, isArray, isStringValid } from "./utils";
+
+export class GithubAPI {
+  private owner: string;
+  private repository: string;
+  private authAxios: AxiosInstance;
+
+  latestRelease: GetLatestRelease;
+
+  constructor(envVariables: {
+    owner: string;
+    repository: string;
+    token: string;
+  }) {
+    const { owner, repository, token } = envVariables;
+
+    this.owner = owner;
+    this.repository = repository;
+
+    this.authAxios = axios.create({
+      headers: {
+        Authorization: `token ${token}`,
+      },
+    });
+
+    this.update();
+
+    const _15minutes = 15 * 60 * 1_000;
+    setInterval(this.update, _15minutes);
+  }
+
+  update = async function () {
+    this.latestRelease = getLatestRelease(
+      this.authAxios,
+      this.owner,
+      this.repository
+    );
+  };
+}
+
+type Asset = { name: string; url: string };
+
+type Release = { relasesFile: string; assets: Asset[] };
+
+type Error = GithubApiError | MissingReleasesFileError;
+
+type GithubApiError = {
+  type: "GITHUB_API_ERROR";
+  tag: GithubApiErrorTags;
+  message: string;
+};
+type GithubApiErrorTags =
+  | "INVALID_RESPONSE_STATUS"
+  | "INVALID_RESPONSE_DATA"
+  | "GET_RELEASES_FILE_FAILED";
+
+type MissingReleasesFileError = { type: "MISSING_RELEASES_FILE" };
+
+export type GetLatestRelease = Promise<Result<Release, Error>>;
+
+export async function getLatestRelease(
+  authAxios: AxiosInstance,
+  owner: string,
+  repository: string
+): GetLatestRelease {
+  const response = await authAxios.get<unknown>(
+    `https://api.github.com/repos/${owner}/${repository}/releases/latest`
+  );
+
+  const githubErr = (tag: GithubApiErrorTags, message: string) =>
+    Err<GithubApiError>({ type: "GITHUB_API_ERROR", tag, message });
+
+  if (response.status !== 200) {
+    return githubErr("INVALID_RESPONSE_STATUS", `STATUS: ${response.status}`);
+  }
+
+  if (typeof response.data !== "object" || response.data === null) {
+    return githubErr("INVALID_RESPONSE_DATA", "RESPONSE_IS_NOT_AN_OBJECT");
+  }
+
+  const assets = getProperty(response.data, "assets");
+
+  if (typeof assets !== "object" || assets === null) {
+    return githubErr("INVALID_RESPONSE_DATA", "NO_ASSETS_PROPERTY_FOUND");
+  }
+
+  if (!isArray(assets)) {
+    return githubErr(
+      "INVALID_RESPONSE_DATA",
+      "ASSETS_PROPERTY_IS_NOT_AN_ARRAY"
+    );
+  }
+
+  const normalizedAssets = assets
+    .map((asset) => {
+      if (typeof asset !== "object" || asset === null) {
+        return null;
+      }
+
+      const name = getProperty(asset, "name");
+      if (typeof name !== "string") return null;
+
+      const url = getProperty(asset, "url");
+      if (typeof url !== "string") return null;
+
+      return { name, url };
+    })
+    .filter((asset): asset is Asset => asset !== null);
+
+  const releasesFileAsset = normalizedAssets.find(
+    (asset) => asset.name === "RELEASES"
+  );
+
+  if (releasesFileAsset === undefined) {
+    return Err<Error>({ type: "MISSING_RELEASES_FILE" });
+  }
+
+  const getReleasesFileResponse = await authAxios.get(releasesFileAsset.url, {
+    headers: {
+      Accept: "application/octet-stream",
+    },
+  });
+
+  if (getReleasesFileResponse.status !== 200) {
+    return githubErr(
+      "GET_RELEASES_FILE_FAILED",
+      `INVALID_STATUS - STATUS: ${response.status} URL: ${releasesFileAsset.url}`
+    );
+  }
+
+  const releasesFileContent = getReleasesFileResponse.data;
+
+  if (!isStringValid(releasesFileContent)) {
+    return githubErr(
+      "GET_RELEASES_FILE_FAILED",
+      `INVALID_CONTENT - URL: ${releasesFileAsset.url}`
+    );
+  }
+
+  return Ok({ relasesFile: releasesFileContent, assets: normalizedAssets });
+}
