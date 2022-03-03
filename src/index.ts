@@ -22,6 +22,8 @@ async function startServer() {
 
   app.set("port", process.env.PORT || 3000);
 
+  app.get("/", (_, response) => response.send("Up and running!"));
+
   app.get("/update/win32/:version/RELEASES", (request, response) =>
     getReleasesFileRoute(request, response, githubApi)
   );
