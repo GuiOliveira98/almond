@@ -44,14 +44,9 @@ export async function getReleasesFileRoute(
     return;
   }
 
-  const latestRelease = latestReleaseResult.value;
-  if (isSameVersion(latestRelease.version, parsedVersion.value)) {
-    return res.status(204).end();
-  }
-
   res.status(200);
   res.setHeader("content-type", "application/octet-stream");
 
-  const releasesFile = latestRelease.relasesFile;
+  const { releasesFile } = latestReleaseResult.value;
   res.end(releasesFile);
 }

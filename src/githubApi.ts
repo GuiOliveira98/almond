@@ -44,7 +44,7 @@ type Asset = {
   getDownloadUrl: () => GetDownloadUrlPromise;
 };
 
-type Release = { version: Version; relasesFile: string; assets: Asset[] };
+type Release = { version: Version; releasesFile: string; assets: Asset[] };
 
 type Error = GithubApiError | MissingReleasesFileError | InvalidTagNameError;
 
@@ -160,7 +160,7 @@ export async function getLatestRelease(
   }
 
   return Ok({
-    relasesFile: releasesFileContent,
+    releasesFile: releasesFileContent,
     assets: normalizedAssets,
     version: parsedVersionResult.value,
   });
